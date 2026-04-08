@@ -1,0 +1,271 @@
+{
+  "hospital_info": {
+    "name": "MedCare General Hospital",
+    "tagline": "Compassionate Care, Advanced Medicine",
+    "address": "742 Wellness Boulevard, Healthcare District, Metro City - 400001",
+    "phone": "+91 22-4567-8900",
+    "emergency": "+91 22-4567-8911",
+    "email": "info@medcarehospital.com",
+    "website": "www.medcarehospital.com",
+    "operating_hours": {
+      "opd": "Monday to Saturday, 8:00 AM - 8:00 PM",
+      "emergency": "24/7, 365 days",
+      "pharmacy": "24/7",
+      "lab": "Monday to Saturday, 7:00 AM - 9:00 PM, Sunday 8:00 AM - 2:00 PM"
+    },
+    "established": "2005",
+    "beds": 350,
+    "accreditation": "NABH Accredited, ISO 9001:2015 Certified"
+  },
+
+  "departments": [
+    {
+      "name": "Cardiology",
+      "description": "Our Cardiology department provides comprehensive heart care including diagnostics, interventional procedures, and cardiac rehabilitation. Equipped with state-of-the-art catheterization labs and non-invasive cardiac imaging.",
+      "services": ["ECG & Echo", "Angiography", "Angioplasty & Stenting", "Pacemaker Implantation", "Cardiac Rehabilitation", "Heart Failure Management"],
+      "head": "Dr. Rajesh Sharma"
+    },
+    {
+      "name": "Orthopedics",
+      "description": "The Orthopedics department specializes in bone, joint, and muscle disorders. We offer advanced treatments including minimally invasive surgeries, joint replacements, and sports medicine.",
+      "services": ["Joint Replacement (Knee, Hip, Shoulder)", "Arthroscopy", "Fracture Management", "Spine Surgery", "Sports Injury Treatment", "Physiotherapy"],
+      "head": "Dr. Priya Malhotra"
+    },
+    {
+      "name": "General Medicine",
+      "description": "Our General Medicine department handles a wide range of health conditions including fever, infections, diabetes management, hypertension, and preventive health check-ups.",
+      "services": ["General Consultation", "Diabetes Management", "Hypertension Treatment", "Thyroid Disorders", "Preventive Health Checkups", "Vaccination"],
+      "head": "Dr. Anand Krishnan"
+    },
+    {
+      "name": "Pediatrics",
+      "description": "The Pediatrics department provides specialized medical care for infants, children, and adolescents. Our child-friendly environment ensures comfortable visits for young patients.",
+      "services": ["Newborn Care", "Child Vaccination", "Growth & Development Assessment", "Pediatric Emergency", "Adolescent Health", "Nutrition Counseling"],
+      "head": "Dr. Sunita Verma"
+    },
+    {
+      "name": "Gynecology & Obstetrics",
+      "description": "Comprehensive women's health services including prenatal care, delivery, gynecological surgeries, and fertility treatments. Our maternity ward provides a comfortable birthing experience.",
+      "services": ["Prenatal Care", "Normal & C-Section Delivery", "High-Risk Pregnancy Management", "Gynecological Surgery", "Fertility Treatment", "Menopause Management"],
+      "head": "Dr. Neha Gupta"
+    },
+    {
+      "name": "Dermatology",
+      "description": "Our Dermatology department treats skin, hair, and nail conditions. We offer both medical and cosmetic dermatology services using the latest technology.",
+      "services": ["Acne Treatment", "Eczema & Psoriasis", "Hair Loss Treatment", "Laser Therapy", "Skin Allergy Testing", "Cosmetic Procedures"],
+      "head": "Dr. Kavita Reddy"
+    },
+    {
+      "name": "ENT (Ear, Nose, Throat)",
+      "description": "The ENT department provides comprehensive care for ear, nose, and throat conditions. We have advanced diagnostic and surgical facilities for both adults and children.",
+      "services": ["Hearing Assessment", "Sinus Treatment", "Tonsillectomy", "Voice Disorders", "Allergy Management", "Sleep Apnea Treatment"],
+      "head": "Dr. Vikram Mehta"
+    },
+    {
+      "name": "Ophthalmology",
+      "description": "Our Eye Care department offers comprehensive eye examinations, laser treatments, and surgical procedures for all age groups.",
+      "services": ["Eye Examination", "Cataract Surgery", "LASIK", "Glaucoma Treatment", "Retina Services", "Pediatric Ophthalmology"],
+      "head": "Dr. Aisha Patel"
+    },
+    {
+      "name": "Neurology",
+      "description": "The Neurology department specializes in disorders of the brain, spinal cord, and nervous system. Our neurologists use advanced diagnostic tools for accurate diagnosis and treatment.",
+      "services": ["Stroke Management", "Epilepsy Treatment", "Headache & Migraine Clinic", "EEG & EMG", "Movement Disorders", "Memory Clinic"],
+      "head": "Dr. Sanjay Iyer"
+    },
+    {
+      "name": "Psychiatry & Mental Health",
+      "description": "Our mental health department provides confidential and compassionate care for psychological and psychiatric conditions. We offer therapy, counseling, and medication management.",
+      "services": ["Individual Therapy", "Group Therapy", "Anxiety & Depression Treatment", "De-addiction Services", "Child Psychology", "Online Counseling"],
+      "head": "Dr. Meera Joshi"
+    }
+  ],
+
+  "doctors": [
+    {
+      "name": "Dr. Rajesh Sharma",
+      "department": "Cardiology",
+      "qualification": "MD, DM (Cardiology), FACC",
+      "experience": "22 years",
+      "specialization": "Interventional Cardiology, Heart Failure",
+      "available_days": "Monday, Wednesday, Friday",
+      "consultation_fee": 1200,
+      "languages": ["English", "Hindi", "Marathi"]
+    },
+    {
+      "name": "Dr. Priya Malhotra",
+      "department": "Orthopedics",
+      "qualification": "MS (Ortho), Fellowship in Joint Replacement",
+      "experience": "18 years",
+      "specialization": "Joint Replacement, Sports Medicine",
+      "available_days": "Monday, Tuesday, Thursday, Saturday",
+      "consultation_fee": 1000,
+      "languages": ["English", "Hindi", "Punjabi"]
+    },
+    {
+      "name": "Dr. Anand Krishnan",
+      "department": "General Medicine",
+      "qualification": "MD (Internal Medicine)",
+      "experience": "15 years",
+      "specialization": "Diabetes, Preventive Medicine",
+      "available_days": "Monday to Saturday",
+      "consultation_fee": 800,
+      "languages": ["English", "Hindi", "Tamil"]
+    },
+    {
+      "name": "Dr. Sunita Verma",
+      "department": "Pediatrics",
+      "qualification": "MD (Pediatrics), DCH",
+      "experience": "20 years",
+      "specialization": "Neonatal Care, Pediatric Intensive Care",
+      "available_days": "Monday, Wednesday, Thursday, Saturday",
+      "consultation_fee": 900,
+      "languages": ["English", "Hindi"]
+    },
+    {
+      "name": "Dr. Neha Gupta",
+      "department": "Gynecology & Obstetrics",
+      "qualification": "MS (OB-GYN), Fellowship in Reproductive Medicine",
+      "experience": "16 years",
+      "specialization": "High-Risk Pregnancy, Fertility",
+      "available_days": "Tuesday, Wednesday, Friday, Saturday",
+      "consultation_fee": 1100,
+      "languages": ["English", "Hindi", "Gujarati"]
+    },
+    {
+      "name": "Dr. Kavita Reddy",
+      "department": "Dermatology",
+      "qualification": "MD (Dermatology), Fellowship in Cosmetic Dermatology",
+      "experience": "12 years",
+      "specialization": "Cosmetic Dermatology, Laser Therapy",
+      "available_days": "Monday, Tuesday, Thursday, Friday",
+      "consultation_fee": 900,
+      "languages": ["English", "Hindi", "Telugu"]
+    },
+    {
+      "name": "Dr. Vikram Mehta",
+      "department": "ENT",
+      "qualification": "MS (ENT), Fellowship in Otology",
+      "experience": "14 years",
+      "specialization": "Hearing Disorders, Sinus Surgery",
+      "available_days": "Monday, Wednesday, Friday, Saturday",
+      "consultation_fee": 800,
+      "languages": ["English", "Hindi"]
+    },
+    {
+      "name": "Dr. Aisha Patel",
+      "department": "Ophthalmology",
+      "qualification": "MS (Ophthalmology), Fellowship in Retina",
+      "experience": "10 years",
+      "specialization": "Cataract Surgery, Retinal Diseases",
+      "available_days": "Tuesday, Thursday, Saturday",
+      "consultation_fee": 900,
+      "languages": ["English", "Hindi", "Gujarati"]
+    },
+    {
+      "name": "Dr. Sanjay Iyer",
+      "department": "Neurology",
+      "qualification": "MD, DM (Neurology)",
+      "experience": "19 years",
+      "specialization": "Stroke, Epilepsy, Movement Disorders",
+      "available_days": "Monday, Tuesday, Thursday, Friday",
+      "consultation_fee": 1500,
+      "languages": ["English", "Hindi", "Kannada"]
+    },
+    {
+      "name": "Dr. Meera Joshi",
+      "department": "Psychiatry & Mental Health",
+      "qualification": "MD (Psychiatry), Diploma in Psychological Medicine",
+      "experience": "13 years",
+      "specialization": "Anxiety, Depression, Addiction",
+      "available_days": "Monday to Friday",
+      "consultation_fee": 1200,
+      "languages": ["English", "Hindi", "Marathi"]
+    }
+  ],
+
+  "faqs": [
+    {
+      "question": "How do I book an appointment?",
+      "answer": "You can book an appointment through our website, by calling +91 22-4567-8900, or by walking in to the reception. Our AI video assistant can also help you book appointments instantly. Online booking is available 24/7."
+    },
+    {
+      "question": "What are the visiting hours?",
+      "answer": "General visiting hours are from 10:00 AM to 12:00 PM and 4:00 PM to 6:00 PM daily. ICU visiting is limited to 11:00 AM - 11:30 AM and 5:00 PM - 5:30 PM with a maximum of 2 visitors at a time."
+    },
+    {
+      "question": "Do you accept insurance?",
+      "answer": "Yes, MedCare General Hospital accepts all major insurance providers including Star Health, HDFC ERGO, ICICI Lombard, New India Assurance, Max Bupa, and Bajaj Allianz. We also have a dedicated insurance desk to help with cashless claims."
+    },
+    {
+      "question": "Is there parking available?",
+      "answer": "Yes, we have a multi-level parking facility with 500+ spots. Parking is free for the first 2 hours for OPD patients. Valet parking is also available at the main entrance."
+    },
+    {
+      "question": "Do you have emergency services?",
+      "answer": "Yes, our Emergency department operates 24/7, 365 days a year. We have a fully equipped trauma center with 24/7 availability of emergency surgeons, anesthesiologists, and critical care specialists. Call +91 22-4567-8911 for emergencies. We also have ambulance services."
+    },
+    {
+      "question": "Can I get an online consultation?",
+      "answer": "Yes, we offer telemedicine consultations through our video platform. You can book an online appointment through our website or app. Online consultations are available for most departments except Emergency and procedures requiring physical examination."
+    },
+    {
+      "question": "What payment methods do you accept?",
+      "answer": "We accept cash, all major credit and debit cards, UPI payments (GPay, PhonePe, Paytm), net banking, and EMI options for major procedures. We also offer payment plans for expensive treatments."
+    },
+    {
+      "question": "How do I get my medical reports?",
+      "answer": "Medical reports can be collected from the lab department 24-48 hours after the test. Reports are also sent to your registered email and available on our patient portal. For urgent tests, reports are available within 4-6 hours."
+    },
+    {
+      "question": "Do you have a pharmacy?",
+      "answer": "Yes, our in-house pharmacy operates 24/7 and stocks a wide range of medicines. We offer a 10% discount on all medicines for hospital patients. Home delivery of medicines is also available."
+    },
+    {
+      "question": "What about COVID-19 precautions?",
+      "answer": "We follow strict infection control protocols including mandatory masking in clinical areas, regular sanitization, temperature screening, and dedicated isolation wards. COVID-19 testing and vaccination services are available."
+    }
+  ],
+
+  "health_packages": [
+    {
+      "name": "Basic Health Checkup",
+      "price": 2499,
+      "includes": ["Complete Blood Count", "Blood Sugar (Fasting & PP)", "Lipid Profile", "Liver Function Test", "Kidney Function Test", "Urine Routine", "Chest X-Ray", "ECG", "Doctor Consultation"],
+      "duration": "3-4 hours"
+    },
+    {
+      "name": "Comprehensive Health Checkup",
+      "price": 5999,
+      "includes": ["All Basic Health Checkup tests", "Thyroid Profile", "Vitamin D & B12", "HbA1c", "PSA (for men) / Pap Smear (for women)", "Ultrasound Abdomen", "Pulmonary Function Test", "Eye Checkup", "Dental Checkup", "Dietitian Consultation"],
+      "duration": "5-6 hours"
+    },
+    {
+      "name": "Executive Health Checkup",
+      "price": 12999,
+      "includes": ["All Comprehensive tests", "CT Calcium Score", "Stress Test (TMT)", "Bone Density Scan", "Cancer Markers", "Full Body MRI Screening", "Specialist Consultations (3)", "Personalized Health Report", "Follow-up Consultation"],
+      "duration": "Full day"
+    },
+    {
+      "name": "Women's Wellness Package",
+      "price": 4999,
+      "includes": ["Complete Blood Count", "Thyroid Profile", "Hormonal Panel", "Pap Smear", "Mammography", "Bone Density", "Ultrasound Pelvis", "Gynecologist Consultation"],
+      "duration": "4-5 hours"
+    },
+    {
+      "name": "Cardiac Health Package",
+      "price": 7999,
+      "includes": ["Lipid Profile", "HbA1c", "ECG", "2D Echo", "Stress Test (TMT)", "CT Calcium Score", "Cardiac Risk Assessment", "Cardiologist Consultation", "Diet Plan"],
+      "duration": "Half day"
+    }
+  ],
+
+  "appointment_rules": {
+    "booking_advance": "Appointments can be booked up to 30 days in advance",
+    "cancellation_policy": "Free cancellation up to 4 hours before the appointment. Late cancellation may incur a fee of Rs. 200.",
+    "rescheduling": "Free rescheduling up to 2 hours before the appointment, subject to availability.",
+    "walk_in": "Walk-in patients are accommodated on a first-come-first-served basis, subject to doctor availability. Wait times may vary.",
+    "follow_up": "Follow-up consultations within 7 days of the initial visit are charged at 50% of the consultation fee.",
+    "documents_required": "Please bring a valid photo ID, insurance card (if applicable), and any previous medical records or reports."
+  }
+}

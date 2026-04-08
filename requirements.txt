@@ -1,0 +1,50 @@
+# ==========================================
+# Hospital Video Agent — Python Dependencies
+# ==========================================
+# Install all at once with: pip install -r requirements.txt
+
+# --- Core Web Framework ---
+# FastAPI: The web framework that creates our API (restaurant waiter)
+# uvicorn: The server that actually runs FastAPI (the restaurant building)
+# python-multipart: Handles file uploads (for audio/video later)
+# websockets: WebSocket support for real-time video chat
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+websockets==12.0
+
+# --- LangChain (The LEGO blocks for AI) ---
+# langchain: Core framework that connects LLM + VectorDB + Memory + Tools
+# langchain-community: Community-maintained integrations (Ollama, Chroma, etc.)
+langchain==0.3.15
+langchain-community==0.3.15
+langchain-ollama==0.2.2
+langchain-text-splitters==0.3.5
+langchain-core==0.3.31
+
+# --- Vector Database ---
+# chromadb: Stores our hospital data as searchable vectors
+# sentence-transformers: Converts text → number vectors (embeddings)
+chromadb==0.5.15
+sentence-transformers==3.3.0
+
+# --- Utilities ---
+# pydantic: Data validation (defines the shape of API requests/responses)
+# python-dotenv: Loads settings from .env files
+# httpx: Modern HTTP client (used internally by some libraries)
+pydantic==2.9.0
+python-dotenv==1.0.1
+httpx==0.27.0
+
+# --- ML/AI Core ---
+# torch: PyTorch - the engine that runs neural networks (embeddings model)
+# transformers: HuggingFace library for loading pre-trained models
+# NOTE: torch is large (~2GB download). Be patient during install!
+transformers>=4.46.0
+torch>=2.6.0
+
+# --- Speech Processing (Phase 3 - install later) ---
+# openai-whisper: Speech-to-text (converts patient voice → text)
+# TTS: Text-to-speech (converts AI response → voice)
+openai-whisper
+# TTS==0.22.0 (Skipping Coqui TTS due to Python 3.13 incompatibility. We will use native macOS voice)
