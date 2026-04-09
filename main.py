@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import logging
 import sys
+import asyncio
 
 # Set up logging so we can see what's happening in the terminal
 logging.basicConfig(
@@ -76,6 +77,7 @@ from backend.agent import HospitalAgent
 from backend.speech_to_text import SpeechToText
 from backend.text_to_speech import TextToSpeech
 from backend.config import settings
+from backend.heygen_client import HeyGenClient
 
 logger.info("=" * 60)
 logger.info("🏥 Starting Hospital Video Agent Modules...")
@@ -92,6 +94,15 @@ tts = TextToSpeech()
 
 # 4. EARS: Speech-to-Text
 stt = SpeechToText()
+
+# 5. AVATAR: HeyGen (optional)
+heygen_client = None
+if settings.HEYGEN_API_KEY and settings.HEYGEN_AVATAR_ID and settings.HEYGEN_VOICE_ID:
+    try:
+        heygen_client = HeyGenClient(settings.HEYGEN_API_KEY)
+        logger.info("✅ HeyGen client ready (avatar video enabled)")
+    except Exception as e:
+        logger.error(f"❌ HeyGen client init failed: {e}")
 
 
 # ==================== Request/Response Models ====================
@@ -222,6 +233,48 @@ async def websocket_chat(websocket: WebSocket):
     """
     await websocket.accept()
     logger.info("🔌 WebSocket connection established")
+
+    heygen_task: asyncio.Task | None = None
+
+    async def _generate_and_send_heygen_video(text: str):
+        if heygen_client is None:
+            return
+        try:
+            await websocket.send_json({"type": "video_pending"})
+
+            def _sync_generate() -> tuple[str, str]:
+                video_id = heygen_client.create_avatar_video_v2(
+                    avatar_id=settings.HEYGEN_AVATAR_ID,
+                    avatar_style=settings.HEYGEN_AVATAR_STYLE,
+                    input_text=text,
+                    voice_id=settings.HEYGEN_VOICE_ID,
+                    title="Hospital Receptionist Response",
+                    dimension={"width": 1280, "height": 720},
+                )
+                video_url = heygen_client.wait_for_video_url(video_id, timeout_s=180)
+                return video_id, video_url
+
+            video_id, video_url = await asyncio.to_thread(_sync_generate)
+            await websocket.send_json({
+                "type": "video_response",
+                "video_url": video_url,
+                "video_id": video_id,
+            })
+        except Exception as e:
+            logger.error(f"❌ HeyGen video generation failed: {e}")
+            # Fallback to audio if HeyGen fails mid-call
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
+                tmp_out_path = tmp_out.name
+            success = tts.synthesize(text, tmp_out_path)
+            if success and os.path.exists(tmp_out_path):
+                with open(tmp_out_path, "rb") as f:
+                    out_audio_bytes = f.read()
+                out_audio_b64 = base64.b64encode(out_audio_bytes).decode("utf-8")
+                await websocket.send_json({
+                    "type": "audio_response",
+                    "data": out_audio_b64,
+                })
+                os.unlink(tmp_out_path)
     
     try:
         while True:
@@ -280,24 +333,30 @@ async def websocket_chat(websocket: WebSocket):
             
             # 3. Generate Audio for the agent's response (MOUTH)
             # We generate a temp wav file, synthesize speech, read bytes, and push to WebSockets
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
-                tmp_out_path = tmp_out.name
-                
-            success = tts.synthesize(agent_text, tmp_out_path)
-            
-            if success and os.path.exists(tmp_out_path):
-                # Read the generated TTS file
-                with open(tmp_out_path, "rb") as f:
-                    out_audio_bytes = f.read()
-                
-                # Base64 encode it and send it to the frontend to play
-                out_audio_b64 = base64.b64encode(out_audio_bytes).decode('utf-8')
-                await websocket.send_json({
-                    "type": "audio_response",
-                    "data": out_audio_b64
-                })
-                
-                os.unlink(tmp_out_path) # Clean up
+            if heygen_client is not None:
+                # Cancel any previous in-flight render (avoid backlog if user speaks quickly)
+                if heygen_task is not None and not heygen_task.done():
+                    heygen_task.cancel()
+                heygen_task = asyncio.create_task(_generate_and_send_heygen_video(agent_text))
+            else:
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
+                    tmp_out_path = tmp_out.name
+
+                success = tts.synthesize(agent_text, tmp_out_path)
+
+                if success and os.path.exists(tmp_out_path):
+                    # Read the generated TTS file
+                    with open(tmp_out_path, "rb") as f:
+                        out_audio_bytes = f.read()
+
+                    # Base64 encode it and send it to the frontend to play
+                    out_audio_b64 = base64.b64encode(out_audio_bytes).decode('utf-8')
+                    await websocket.send_json({
+                        "type": "audio_response",
+                        "data": out_audio_b64
+                    })
+
+                    os.unlink(tmp_out_path) # Clean up
             
     except WebSocketDisconnect:
         logger.info("🔌 WebSocket disconnected. Clearing agent memory.")

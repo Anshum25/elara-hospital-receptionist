@@ -22,12 +22,17 @@ Explained with comments below.
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 # Get the absolute path of this project's root directory
 # Path(__file__) = this file's path (backend/config.py)
 # .parent = backend/
 # .parent.parent = hospital-video-agent/ (project root)
 PROJECT_ROOT = Path(__file__).parent.parent
+
+# Load environment variables from .env at project root
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 class Settings:
@@ -101,6 +106,14 @@ class Settings:
     
     # ==================== Data Paths ====================
     HOSPITAL_DATA_PATH: str = str(PROJECT_ROOT / "data" / "hospital_knowledge.json")
+
+    # ==================== HeyGen Settings ====================
+    # NOTE: HEYGEN_APIKEY is expected in .env
+    HEYGEN_API_KEY: str = os.getenv("HEYGEN_APIKEY", "")
+    # You must create/select an avatar in HeyGen and set this env var.
+    HEYGEN_AVATAR_ID: str = os.getenv("HEYGEN_AVATAR_ID", "")
+    HEYGEN_AVATAR_STYLE: str = os.getenv("HEYGEN_AVATAR_STYLE", "normal")
+    HEYGEN_VOICE_ID: str = os.getenv("HEYGEN_VOICE_ID", "")
     
     # ==================== Server Settings ====================
     HOST: str = "0.0.0.0"

@@ -8,11 +8,15 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  
+
   // Captions
   const [userTranscript, setUserTranscript] = useState('');
   const [agentResponse, setAgentResponse] = useState('Hello! I\'m Elara, your AI Hospital Receptionist. How can I help you today?');
-  
+
+  // Avatar video
+  const [agentVideoUrl, setAgentVideoUrl] = useState('');
+  const [isVideoPending, setIsVideoPending] = useState(false);
+
   // Refs
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -29,14 +33,14 @@ function App() {
 
     wsRef.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      
+
       switch (data.type) {
         case 'transcript':
           // The AI heard us!
           setUserTranscript(data.message);
           setAgentResponse('...'); // Thinking
           break;
-          
+
         case 'response':
           // The AI generated text
           setAgentResponse(data.message);
@@ -53,11 +57,25 @@ function App() {
           }
           const blob = new Blob([uint8Array], { type: 'audio/wav' });
           const audioUrl = URL.createObjectURL(blob);
-          
+
           if (audioPlayerRef.current) {
             audioPlayerRef.current.src = audioUrl;
             audioPlayerRef.current.play().catch(e => console.error("Playback failed:", e));
           }
+          break;
+        }
+
+        case 'video_response': {
+          // The AI generated a lip-synced avatar video on HeyGen
+          if (data.video_url) {
+            setAgentVideoUrl(data.video_url);
+            setIsVideoPending(false);
+          }
+          break;
+        }
+
+        case 'video_pending': {
+          setIsVideoPending(true);
           break;
         }
 
@@ -66,11 +84,11 @@ function App() {
           setAgentResponse("Sorry, I had trouble processing that.");
           setIsProcessing(false);
           break;
-          
+
         case 'pong':
           // heartbeat
           break;
-          
+
         default:
           break;
       }
@@ -87,7 +105,7 @@ function App() {
   useEffect(() => {
     // 1. Establish WebSocket connection to FastAPI
     connectWebSocket();
-    
+
     return () => {
       if (wsRef.current) wsRef.current.close();
     };
@@ -122,14 +140,14 @@ function App() {
         setIsProcessing(true);
         setUserTranscript(''); // Clear old text while waiting
         setAgentResponse('Listening...');
-        
+
         // Stop audio playback if agent is currently speaking
         if (audioPlayerRef.current) {
           audioPlayerRef.current.pause();
         }
 
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        
+
         // Convert Blob to Base64 to send via WebSocket easily
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
@@ -174,7 +192,7 @@ function App() {
     <div className="app-container">
       {/* Hidden Audio Player for the TTS response */}
       <audio ref={audioPlayerRef} className="audio-player" />
-      
+
       {/* Top Navigation */}
       <nav className="navbar">
         <div className="logo-area">
@@ -183,7 +201,7 @@ function App() {
             <p>Intelligence Center</p>
           </div>
         </div>
-        
+
         <div className="status-badge">
           <div className={`status-dot ${isConnected ? 'connected' : 'disconnected'}`}></div>
           {isConnected ? 'System Online' : 'Connecting to Core...'}
@@ -193,30 +211,41 @@ function App() {
       {/* Main Interactive Center */}
       <main className="main-content">
         <div className={`agent-interface ${isRecording ? 'recording' : ''}`}>
-          
+
           {/* Background Avatar */}
           <div className="avatar-container">
-            {/* Make sure to copy medbot_avatar.png into the public folder! */}
-            <img 
-              src="/medbot_avatar.png" 
-              alt="Medical AI Assistant" 
-              className="avatar-image" 
-              onError={(e) => { e.target.style.display = 'none'; }}
-            />
+            {agentVideoUrl ? (
+              <video
+                src={agentVideoUrl}
+                className="avatar-image"
+                autoPlay
+                playsInline
+                controls
+                onEnded={() => setAgentVideoUrl('')}
+                onError={() => setAgentVideoUrl('')}
+              />
+            ) : (
+              <img
+                src="/medbot_avatar.png"
+                alt="Medical AI Assistant"
+                className="avatar-image"
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+            )}
           </div>
-          
+
           <div className="gradient-overlay"></div>
 
           {/* Interactive UI Overlays */}
           <div className="call-overlay">
-            
+
             <div className="nameplate">
               <h2>Elara</h2>
               <p>AI RECEPTIONIST</p>
             </div>
 
             <div className="bottom-section">
-              
+
               <div className="captions-container">
                 {userTranscript && (
                   <div className="user-transcript" key={userTranscript}>
@@ -226,16 +255,21 @@ function App() {
                 <div className="agent-response" key={agentResponse}>
                   {agentResponse}
                 </div>
+                {isVideoPending && (
+                  <div className="agent-response" style={{ opacity: 0.8 }}>
+                    Generating avatar video...
+                  </div>
+                )}
               </div>
-              
+
               {isConnected && !isRecording && !isProcessing && (
                 <div className="instruction-text">Hold microphone to speak</div>
               )}
-              {isRecording && <div className="instruction-text" style={{color: '#ef4444'}}>Recording... Click to stop.</div>}
+              {isRecording && <div className="instruction-text" style={{ color: '#ef4444' }}>Recording... Click to stop.</div>}
 
               <div className={`controls ${isProcessing ? 'processing' : ''}`}>
-                <button 
-                  className={`mic-btn ${isRecording ? 'recording' : ''}`} 
+                <button
+                  className={`mic-btn ${isRecording ? 'recording' : ''}`}
                   onClick={toggleRecording}
                   disabled={isProcessing || !isConnected}
                   aria-label="Toggle Microphone"
