@@ -43,6 +43,7 @@ class HeyGenClient:
         self,
         *,
         avatar_id: str,
+        avatar_pose_id: str,
         audio_asset_id: Optional[str] = None,
         input_text: Optional[str] = None,
         voice_id: Optional[str] = None,
@@ -51,48 +52,46 @@ class HeyGenClient:
         dimension: Optional[Dict[str, int]] = None,
     ) -> str:
         """Starts a video render job and returns video_id."""
-        url = "https://api.heygen.com/v2/video/generate"
+        # HeyGen API: Create a WebM Video
+        # This endpoint is broadly available and supports text+voice or uploaded audio.
+        # Docs: https://docs.heygen.com/reference/create-a-webm-video
+        url = "https://api.heygen.com/v1/video.webm"
         headers = {
             **self._headers(),
             "Content-Type": "application/json",
         }
 
+        if not avatar_pose_id:
+            raise ValueError("avatar_pose_id is required for /v1/video.webm endpoint")
+
         if audio_asset_id and (input_text or voice_id):
             raise ValueError("Provide either audio_asset_id OR (input_text + voice_id), not both")
 
+        body: Dict[str, Any] = {
+            "avatar_id": avatar_id,
+            "avatar_style": avatar_style,
+            "avatar_pose_id": avatar_pose_id,
+        }
+
         if audio_asset_id:
-            voice: Dict[str, Any] = {
-                "type": "audio",
-                "audio_asset_id": audio_asset_id,
-            }
+            body["input_audio"] = audio_asset_id
         else:
             if not input_text or not voice_id:
                 raise ValueError("Missing voice input: provide audio_asset_id or (input_text and voice_id)")
-            voice = {
-                "type": "text",
-                "input_text": input_text,
-                "voice_id": voice_id,
-            }
+            body["input_text"] = input_text
+            body["voice_id"] = voice_id
 
-        video_input: Dict[str, Any] = {
-            "character": {
-                "type": "avatar",
-                "avatar_id": avatar_id,
-                "avatar_style": avatar_style,
-            },
-            "voice": voice,
-        }
-
-        body: Dict[str, Any] = {
-            "video_inputs": [video_input],
-        }
-        if title:
-            body["title"] = title
+        # title is not a documented field for this endpoint; ignore if provided
         if dimension:
             body["dimension"] = dimension
 
         resp = httpx.post(url, headers=headers, json=body, timeout=60)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(
+                f"HeyGen create video failed ({resp.status_code}): {resp.text[:2000]}"
+            ) from e
         payload = resp.json()
         data = payload.get("data") or {}
         video_id = data.get("video_id") or data.get("id")
@@ -106,7 +105,12 @@ class HeyGenClient:
             **self._headers(),
         }
         resp = httpx.get(url, headers=headers, params={"video_id": video_id}, timeout=60)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(
+                f"HeyGen video status failed ({resp.status_code}): {resp.text[:2000]}"
+            ) from e
         payload = resp.json()
         data = payload.get("data") or {}
         return data

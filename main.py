@@ -29,6 +29,7 @@ from pydantic import BaseModel
 import logging
 import sys
 import asyncio
+import httpx
 
 # Set up logging so we can see what's happening in the terminal
 logging.basicConfig(
@@ -77,7 +78,7 @@ from backend.agent import HospitalAgent
 from backend.speech_to_text import SpeechToText
 from backend.text_to_speech import TextToSpeech
 from backend.config import settings
-from backend.heygen_client import HeyGenClient
+from backend.did_client import DIDClient
 
 logger.info("=" * 60)
 logger.info("🏥 Starting Hospital Video Agent Modules...")
@@ -95,14 +96,22 @@ tts = TextToSpeech()
 # 4. EARS: Speech-to-Text
 stt = SpeechToText()
 
-# 5. AVATAR: HeyGen (optional)
-heygen_client = None
-if settings.HEYGEN_API_KEY and settings.HEYGEN_AVATAR_ID and settings.HEYGEN_VOICE_ID:
+# 5. AVATAR: D-ID Live Streaming (replaces HeyGen)
+did_client: DIDClient | None = None
+if settings.DID_API_KEY and settings.DID_SOURCE_URL:
     try:
-        heygen_client = HeyGenClient(settings.HEYGEN_API_KEY)
-        logger.info("✅ HeyGen client ready (avatar video enabled)")
+        did_client = DIDClient(settings.DID_API_KEY)
+        logger.info("✅ D-ID client ready (live streaming enabled)")
     except Exception as e:
-        logger.error(f"❌ HeyGen client init failed: {e}")
+        logger.error(f"❌ D-ID client init failed: {e}")
+else:
+    missing = []
+    if not settings.DID_API_KEY:
+        missing.append("DID_API_KEY")
+    if not settings.DID_SOURCE_URL:
+        missing.append("DID_SOURCE_URL")
+    if missing:
+        logger.info(f"ℹ️ D-ID not enabled (missing: {', '.join(missing)})")
 
 
 # ==================== Request/Response Models ====================
@@ -144,6 +153,74 @@ async def root():
         "model": settings.LLM_MODEL,
         "docs": "Visit /docs for interactive API documentation"
     }
+
+
+@app.get("/did/stream/start")
+async def did_start_stream():
+    """Start a D-ID streaming session and return WebRTC config for frontend."""
+    if not did_client:
+        return {"status": "error", "message": "D-ID not configured"}
+    try:
+        # Create streaming session
+        result = did_client.create_stream(
+            source_url=settings.DID_SOURCE_URL,
+            voice_id=settings.DID_VOICE_ID
+        )
+        return {
+            "status": "success",
+            "session_id": result["session_id"],
+            "stream_id": result["stream_id"],
+            "sdp_offer": result["sdp_offer"],
+            "ice_servers": result["ice_servers"],
+        }
+    except Exception as e:
+        logger.error(f"D-ID stream start failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/did/stream/answer")
+async def did_submit_answer(data: dict):
+    """Submit WebRTC SDP answer from frontend to complete handshake."""
+    if not did_client:
+        return {"status": "error", "message": "D-ID not configured"}
+    try:
+        sdp_answer = data.get("sdp_answer", "")
+        if not sdp_answer:
+            return {"status": "error", "message": "sdp_answer required"}
+        did_client.submit_sdp_answer(sdp_answer)
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"D-ID answer submit failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/did/stream/ice")
+async def did_submit_ice(data: dict):
+    """Submit ICE candidate for NAT traversal."""
+    if not did_client:
+        return {"status": "error", "message": "D-ID not configured"}
+    try:
+        candidate = data.get("candidate", "")
+        sdp_mid = data.get("sdpMid", "")
+        sdp_mline_index = data.get("sdpMLineIndex", 0)
+        did_client.submit_ice_candidate(candidate, sdp_mid, sdp_mline_index)
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"D-ID ICE submit failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/did/stream/close-all")
+async def did_close_all():
+    """Manually close all D-ID sessions (use when max sessions reached)."""
+    if not did_client:
+        return {"status": "error", "message": "D-ID not configured"}
+    try:
+        did_client.close_all_sessions()
+        return {"status": "success", "message": "All sessions closed"}
+    except Exception as e:
+        logger.error(f"D-ID close all failed: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/health")
@@ -233,48 +310,78 @@ async def websocket_chat(websocket: WebSocket):
     """
     await websocket.accept()
     logger.info("🔌 WebSocket connection established")
+    latest_request_id = 0
+    active_response_task: asyncio.Task | None = None
 
-    heygen_task: asyncio.Task | None = None
-
-    async def _generate_and_send_heygen_video(text: str):
-        if heygen_client is None:
+    async def _send_text_to_did(text: str):
+        """Send text to D-ID for live streaming avatar speech."""
+        if did_client is None or not did_client.stream_id:
             return
         try:
-            await websocket.send_json({"type": "video_pending"})
-
-            def _sync_generate() -> tuple[str, str]:
-                video_id = heygen_client.create_avatar_video_v2(
-                    avatar_id=settings.HEYGEN_AVATAR_ID,
-                    avatar_style=settings.HEYGEN_AVATAR_STYLE,
-                    input_text=text,
-                    voice_id=settings.HEYGEN_VOICE_ID,
-                    title="Hospital Receptionist Response",
-                    dimension={"width": 1280, "height": 720},
-                )
-                video_url = heygen_client.wait_for_video_url(video_id, timeout_s=180)
-                return video_id, video_url
-
-            video_id, video_url = await asyncio.to_thread(_sync_generate)
-            await websocket.send_json({
-                "type": "video_response",
-                "video_url": video_url,
-                "video_id": video_id,
-            })
+            # Send text to D-ID - avatar speaks in real-time via WebRTC
+            success = did_client.send_text(text)
+            if success:
+                logger.info(f"🎙️ Sent to D-ID live stream: {text[:50]}...")
+            else:
+                logger.warning("Failed to send text to D-ID")
         except Exception as e:
-            logger.error(f"❌ HeyGen video generation failed: {e}")
-            # Fallback to audio if HeyGen fails mid-call
+            logger.error(f"❌ D-ID send text failed: {e}")
+
+    async def _process_and_respond(question: str, request_id: int, direct_text: bool = False):
+        try:
+            if direct_text:
+                agent_text = question
+            else:
+                # Run blocking agent call in thread so websocket loop stays responsive.
+                result = await asyncio.to_thread(agent.process_message, question)
+                agent_text = result["answer"]
+
+            # Ignore stale responses if user asked a newer question.
+            if request_id != latest_request_id:
+                logger.info(f"⏭️ Skipping stale response for request_id={request_id}")
+                return
+
+            await websocket.send_json({
+                "type": "response",
+                "message": agent_text,
+                "request_id": request_id
+            })
+
+            # Send to D-ID stream if enabled; otherwise fallback TTS audio.
+            if did_client is not None and did_client.stream_id:
+                await _send_text_to_did(agent_text)
+                return
+
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
                 tmp_out_path = tmp_out.name
-            success = tts.synthesize(text, tmp_out_path)
-            if success and os.path.exists(tmp_out_path):
-                with open(tmp_out_path, "rb") as f:
-                    out_audio_bytes = f.read()
-                out_audio_b64 = base64.b64encode(out_audio_bytes).decode("utf-8")
-                await websocket.send_json({
-                    "type": "audio_response",
-                    "data": out_audio_b64,
-                })
-                os.unlink(tmp_out_path)
+
+            try:
+                success = await asyncio.to_thread(tts.synthesize, agent_text, tmp_out_path)
+                if success and os.path.exists(tmp_out_path):
+                    with open(tmp_out_path, "rb") as f:
+                        out_audio_bytes = f.read()
+                    # Re-check staleness before sending generated audio.
+                    if request_id == latest_request_id:
+                        out_audio_b64 = base64.b64encode(out_audio_bytes).decode("utf-8")
+                        await websocket.send_json({
+                            "type": "audio_response",
+                            "data": out_audio_b64,
+                            "request_id": request_id
+                        })
+            finally:
+                if os.path.exists(tmp_out_path):
+                    os.unlink(tmp_out_path)
+
+        except asyncio.CancelledError:
+            logger.info(f"🛑 Cancelled response task for request_id={request_id}")
+            raise
+        except Exception as e:
+            logger.error(f"❌ Response task failed for request_id={request_id}: {e}")
+            await websocket.send_json({
+                "type": "error",
+                "message": "Sorry, I had trouble processing that.",
+                "request_id": request_id
+            })
     
     try:
         while True:
@@ -284,9 +391,16 @@ async def websocket_chat(websocket: WebSocket):
             
             # 1. Extract the text question from either TEXT or AUDIO
             question = ""
+            direct_text = False
             if message_type == "text":
                 question = data.get("message", "")
+                latest_request_id = int(data.get("request_id") or (latest_request_id + 1))
                 logger.info(f"⌨️ Received Text: {question}")
+            elif message_type == "greeting":
+                question = data.get("message", "")
+                latest_request_id = int(data.get("request_id") or (latest_request_id + 1))
+                direct_text = True
+                logger.info("👋 Received startup greeting request")
                 
             elif message_type == "audio":
                 # Audio comes in as Base64 encoded string
@@ -321,46 +435,22 @@ async def websocket_chat(websocket: WebSocket):
             # 2. Process the question through our Agent (BRAIN)
             if not question:
                 continue
-                
-            result = agent.process_message(question)
-            agent_text = result["answer"]
-            
-            # Send the text response back immediately
-            await websocket.send_json({
-                "type": "response",
-                "message": agent_text
-            })
-            
-            # 3. Generate Audio for the agent's response (MOUTH)
-            # We generate a temp wav file, synthesize speech, read bytes, and push to WebSockets
-            if heygen_client is not None:
-                # Cancel any previous in-flight render (avoid backlog if user speaks quickly)
-                if heygen_task is not None and not heygen_task.done():
-                    heygen_task.cancel()
-                heygen_task = asyncio.create_task(_generate_and_send_heygen_video(agent_text))
-            else:
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
-                    tmp_out_path = tmp_out.name
 
-                success = tts.synthesize(agent_text, tmp_out_path)
+            if active_response_task and not active_response_task.done():
+                active_response_task.cancel()
 
-                if success and os.path.exists(tmp_out_path):
-                    # Read the generated TTS file
-                    with open(tmp_out_path, "rb") as f:
-                        out_audio_bytes = f.read()
-
-                    # Base64 encode it and send it to the frontend to play
-                    out_audio_b64 = base64.b64encode(out_audio_bytes).decode('utf-8')
-                    await websocket.send_json({
-                        "type": "audio_response",
-                        "data": out_audio_b64
-                    })
-
-                    os.unlink(tmp_out_path) # Clean up
+            active_response_task = asyncio.create_task(
+                _process_and_respond(question, latest_request_id, direct_text=direct_text)
+            )
             
     except WebSocketDisconnect:
         logger.info("🔌 WebSocket disconnected. Clearing agent memory.")
+        if active_response_task and not active_response_task.done():
+            active_response_task.cancel()
         agent.reset_memory()
+        # Cleanup D-ID stream
+        if did_client and did_client.stream_id:
+            did_client.delete_stream()
     except Exception as e:
         logger.error(f"❌ WebSocket error: {e}")
 
