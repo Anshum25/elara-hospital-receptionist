@@ -110,15 +110,13 @@ class Settings:
     # ==================== HeyGen Settings ====================
     # NOTE: HEYGEN_APIKEY is expected in .env
     HEYGEN_API_KEY: str = os.getenv("HEYGEN_APIKEY", "")
-    # You must create/select an avatar in HeyGen and set this env var.
-    HEYGEN_AVATAR_ID: str = os.getenv("HEYGEN_AVATAR_ID", "")
+    HEYGEN_AVATAR_ID: str = os.getenv("HEYGEN_AVATAR_ID", "Anna_public_3_20240108")
+    HEYGEN_VOICE_ID: str = os.getenv("HEYGEN_VOICE_ID", "en-US-JennyNeural")
     HEYGEN_AVATAR_STYLE: str = os.getenv("HEYGEN_AVATAR_STYLE", "normal")
-    HEYGEN_VOICE_ID: str = os.getenv("HEYGEN_VOICE_ID", "")
-    # Optional: pose for /v1/video.webm (defaults to 'half_body' if not set)
     HEYGEN_AVATAR_POSE_ID: str = os.getenv("HEYGEN_AVATAR_POSE_ID", "half_body")
 
     # ==================== D-ID Live Streaming Settings ====================
-    # D-ID for real-time WebRTC streaming (replaces HeyGen video generation)
+    # D-ID for real-time WebRTC streaming
     DID_API_KEY: str = os.getenv("DID_API_KEY", "")
     DID_SOURCE_URL: str = os.getenv("DID_SOURCE_URL", "")
     DID_VOICE_ID: str = os.getenv("DID_VOICE_ID", "en-US-JennyNeural")

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './index.css';
 
-const WS_URL = 'ws://localhost:8000/ws/chat';
+const BACKEND_URL = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://' + window.location.hostname.replace('frontend', 'backend'); 
+const WS_URL = window.location.hostname === 'localhost' ? 'ws://localhost:8000/ws/chat' : 'wss://' + window.location.hostname.replace('frontend', 'backend') + '/ws/chat';
 const DEFAULT_GREETING = "Hello! I'm Elara, your AI Hospital Receptionist. How can I help you today?";
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
   const [userTranscript, setUserTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [agentResponse, setAgentResponse] = useState(DEFAULT_GREETING);
+  const [canStartSession, setCanStartSession] = useState(false);
 
   // Refs
   const wsRef = useRef(null);
@@ -38,6 +40,13 @@ function App() {
   const pendingAudioRequestIdRef = useRef(0);
   const [isAudioBlocked, setIsAudioBlocked] = useState(false);
   const [needsManualVoiceStart, setNeedsManualVoiceStart] = useState(false);
+  
+  // D-ID Refs & State
+  const pcRef = useRef(null);
+  const streamIdRef = useRef(null);
+  const sessionIdRef = useRef(null);
+  const avatarVideoRef = useRef(null);
+  const [isVideoReady, setIsVideoReady] = useState(false);
 
   const clearPauseTimer = useCallback(() => {
     if (pauseTimerRef.current) {
@@ -83,6 +92,8 @@ function App() {
   }, []);
 
   const playAudioUrl = useCallback((audioUrl, requestId) => {
+    // We only use this if local TTS is somehow still being triggered.
+    // For HeyGen, we skip this and use avatar.speak()
     if (!audioPlayerRef.current) return;
 
     setIsSpeaking(true);
@@ -97,7 +108,6 @@ function App() {
         setIsAudioBlocked(true);
         pendingAudioUrlRef.current = audioUrl;
         pendingAudioRequestIdRef.current = requestId || latestRequestIdRef.current;
-        // Don't block mic forever when autoplay is restricted.
         awaitingGreetingAudioRef.current = false;
         if (isMicEnabled) {
           shouldListenRef.current = true;
@@ -112,10 +122,79 @@ function App() {
       isProcessingRef.current = false;
       awaitingGreetingAudioRef.current = false;
       if (isMicEnabled) {
-        shouldListenRef.current = true;
-        startListening();
+        // On first connect, start video stream
+        startVideoSession();
       }
     });
+  }, []);
+
+  // ─── D-ID Session Management (WebRTC) ───
+  const startVideoSession = useCallback(async () => {
+    try {
+      console.log('🚀 Starting D-ID Video session...');
+      // 1. Get SDP Offer from Backend
+      const streamResp = await fetch(`${BACKEND_URL}/did/stream/start`);
+      const streamData = await streamResp.json();
+      
+      if (streamData.status !== 'success') {
+        throw new Error(streamData.message || 'Failed to start D-ID stream');
+      }
+
+      const { session_id, stream_id, sdp_offer, ice_servers } = streamData;
+      sessionIdRef.current = session_id;
+      streamIdRef.current = stream_id;
+
+      // 2. Initialize Peer Connection
+      const pc = new RTCPeerConnection({ iceServers: ice_servers });
+      pcRef.current = pc;
+
+      // 3. Setup Track Events
+      pc.ontrack = (event) => {
+        console.log('✅ D-ID Stream Track Received');
+        if (avatarVideoRef.current && event.track.kind === 'video') {
+          avatarVideoRef.current.srcObject = event.streams[0];
+          avatarVideoRef.current.onloadedmetadata = () => {
+             avatarVideoRef.current.play();
+             setIsVideoReady(true);
+          };
+        }
+      };
+
+      // 4. Handle ICE Candidates
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          fetch(`${BACKEND_URL}/did/stream/ice`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              candidate: event.candidate.candidate,
+              sdpMid: event.candidate.sdpMid,
+              sdpMLineIndex: event.candidate.sdpMLineIndex,
+            }),
+          });
+        }
+      };
+
+      // 5. Set Remote Description (D-ID's Offer)
+      await pc.setRemoteDescription(new RTCSessionDescription({
+        type: 'offer',
+        sdp: sdp_offer,
+      }));
+
+      // 6. Create Answer and Set Local Description
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      // 7. Submit Answer to D-ID via Backend
+      await fetch(`${BACKEND_URL}/did/stream/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sdp_answer: answer.sdp }),
+      });
+
+    } catch (error) {
+      console.error('❌ Failed to start D-ID session:', error);
+    }
   }, []);
 
   const playWelcomeGreeting = useCallback(() => {
@@ -345,8 +424,10 @@ function App() {
     ws.onopen = () => {
       console.log('✅ Connected to Hospital AI Agent');
       setIsConnected(true);
-      // Speak welcome line first, then listen.
-      playWelcomeGreeting();
+      // Initialize D-ID Avatar and speak welcome line.
+      startVideoSession().then(() => {
+          playWelcomeGreeting();
+      });
     };
 
     ws.onmessage = (event) => {
@@ -363,17 +444,24 @@ function App() {
             break;
           }
           setAgentResponse(data.message);
+          
+          // D-ID avatar speaking is handled by the backend's send_text command
+          setIsSpeaking(true);
+          isSpeakingRef.current = true;
+
           if (awaitingGreetingAudioRef.current) {
             break;
           }
           setIsProcessing(false);
           isProcessingRef.current = false;
-          // If no audio response follows, resume listening after a short delay
+          
+          // Resume listening after a delay (approx length of speaking)
+          const speakDelay = Math.max(2000, (data.message.length / 15) * 1000 + 500); 
           setTimeout(() => {
             if (isMicEnabled && !isSpeakingRef.current) {
               startListening();
             }
-          }, 800);
+          }, speakDelay);
           break;
 
         case 'audio_response': {
@@ -433,7 +521,7 @@ function App() {
       stopListening();
       setTimeout(() => connectWebSocket(), 3000);
     };
-  }, [clearPauseTimer, isMicEnabled, playAudioUrl, playWelcomeGreeting, startListening, stopListening, stopRecognitionOnly]);
+  }, [clearPauseTimer, isMicEnabled, playAudioUrl, playWelcomeGreeting, startListening, stopListening, stopRecognitionOnly, startVideoSession]);
 
   // ─── Handle audio playback finishing → resume listening ───
   useEffect(() => {
@@ -583,6 +671,10 @@ function App() {
       if (pendingAudioUrlRef.current) {
         URL.revokeObjectURL(pendingAudioUrlRef.current);
       }
+      if (pcRef.current) {
+        pcRef.current.close();
+        pcRef.current = null;
+      }
       if (wsRef.current) wsRef.current.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -641,16 +733,42 @@ function App() {
       <main className="main-content">
         <div className={`agent-interface ${isListening ? 'listening' : ''}`}>
 
-          {/* Static Agent Image */}
+          {/* Live D-ID Avatar Video */}
           <div className="agent-image-container">
-            <img
-              src="/elara_receptionist.png"
-              alt="Hospital reception desk"
-              className="agent-image"
-            />
+                  <video 
+                    ref={avatarVideoRef}
+                    className={`w-full h-full object-cover transition-opacity duration-1000 ${isVideoReady ? 'opacity-100' : 'opacity-0'}`} 
+                    autoPlay 
+                    playsInline
+                    muted={false}
+                  />
+                  {!canStartSession && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 bg-opacity-80 z-50">
+                      <div className="text-white text-2xl mb-6 font-semibold">Elara is ready to help</div>
+                      <button 
+                        onClick={() => {
+                          setCanStartSession(true);
+                          // Dummy play to unlock media for all browsers
+                          if (avatarVideoRef.current) {
+                            avatarVideoRef.current.play().catch(() => {});
+                          }
+                          startVideoSession().then(() => {
+                            playWelcomeGreeting();
+                          });
+                        }}
+                        className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-bold transition-all transform hover:scale-105 shadow-lg"
+                      >
+                         Click to Start Chat
+                      </button>
+                    </div>
+                  )}
+                  {canStartSession && !isVideoReady && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50">
+                      <div className="text-white text-xl animate-pulse">Initializing Elara...</div>
+                    </div>
+                  )}
+            <div className="gradient-overlay"></div>
           </div>
-
-          <div className="gradient-overlay"></div>
 
           {/* Overlays */}
           <div className="call-overlay">

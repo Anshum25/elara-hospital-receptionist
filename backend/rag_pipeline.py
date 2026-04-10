@@ -86,7 +86,15 @@ from langchain_core.prompts import PromptTemplate
 # RetrievalQA: The chain that ties everything together
 #   - Takes a question → retrieves relevant docs → generates answer
 #
-from langchain.chains import RetrievalQA
+try:
+    from langchain.chains import RetrievalQA
+except ImportError:
+    # Fallback for some specific environment configurations
+    try:
+        from langchain.chains.retrieval_qa.base import RetrievalQA
+    except ImportError:
+        logger.error("❌ Could not import RetrievalQA. Please ensure 'langchain' is properly installed.")
+        raise
 
 from backend.config import settings
 

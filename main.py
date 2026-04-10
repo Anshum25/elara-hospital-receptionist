@@ -23,21 +23,29 @@ By default, a website at localhost:3000 (React) can't talk to localhost:8000 (Fa
 CORS middleware tells the browser "it's OK, let them communicate."
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import logging
 import sys
-import asyncio
-import httpx
+import os
 
-# Set up logging so we can see what's happening in the terminal
+# Set up logging IMMEDIATELY at the very top so we see output right away
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     stream=sys.stdout
 )
 logger = logging.getLogger(__name__)
+
+logger.info("=" * 60)
+logger.info("🏥 Starting Hospital Video Agent server...")
+logger.info("=" * 60)
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import asyncio
+import httpx
+import base64
+import tempfile
 
 # ==================== Create the FastAPI App ====================
 # 
@@ -69,49 +77,52 @@ app.add_middleware(
     allow_headers=["*"],        # Allow all headers
 )
 
-# ==================== Initialize the Backend Systems ====================
-import base64
-import tempfile
-import os
-from backend.rag_pipeline import HospitalRAGPipeline
-from backend.agent import HospitalAgent
+# Initialize the Backend Systems (Lazily or after logging)
+from backend.config import settings
 from backend.speech_to_text import SpeechToText
 from backend.text_to_speech import TextToSpeech
-from backend.config import settings
 from backend.did_client import DIDClient
 
-logger.info("=" * 60)
-logger.info("🏥 Starting Hospital Video Agent Modules...")
-logger.info("=" * 60)
-
-# 1. RAG limits knowledge strictly to hospital data
-rag_pipeline = HospitalRAGPipeline()
-
-# 2. Agent gives the AI the power to use tools (booking, searching)
-agent = HospitalAgent(rag_pipeline)
-
-# 3. MOUTH: Text-to-Speech
-tts = TextToSpeech()
-
-# 4. EARS: Speech-to-Text
+# These will be loaded when the app starts up fully
+rag_pipeline = None
+agent = None
 stt = SpeechToText()
 
-# 5. AVATAR: D-ID Live Streaming (replaces HeyGen)
+# 3. MOUTH: Text-to-Speech (Optional)
+# Loading the TTS model takes ~2 minutes. We skip it if an external avatar (D-ID/HeyGen) is enabled.
+tts = None
+if not settings.DID_API_KEY and not settings.HEYGEN_API_KEY:
+    tts = TextToSpeech()
+else:
+    logger.info("✨ Skipping local TTS initialization (using external provider)")
+
+# 4. EARS: Speech-to-Text
+# (STT is already initialized above)
+
+# 5. AVATAR: D-ID Live Streaming
 did_client: DIDClient | None = None
 if settings.DID_API_KEY and settings.DID_SOURCE_URL:
     try:
         did_client = DIDClient(settings.DID_API_KEY)
-        logger.info("✅ D-ID client ready (live streaming enabled)")
+        logger.info("✅ D-ID streaming configuration loaded")
     except Exception as e:
         logger.error(f"❌ D-ID client init failed: {e}")
 else:
-    missing = []
-    if not settings.DID_API_KEY:
-        missing.append("DID_API_KEY")
-    if not settings.DID_SOURCE_URL:
-        missing.append("DID_SOURCE_URL")
-    if missing:
-        logger.info(f"ℹ️ D-ID not enabled (missing: {', '.join(missing)})")
+    logger.info("ℹ️ D-ID streaming not fully configured (missing key or source URL)")
+
+@app.on_event("startup")
+async def startup_event():
+    """Load heavy RAG components after the server has started."""
+    global rag_pipeline, agent
+    logger.info("📦 Loading Knowledge Base & AI Agent (This may take a moment)...")
+    from backend.rag_pipeline import HospitalRAGPipeline
+    from backend.agent import HospitalAgent
+    
+    rag_pipeline = HospitalRAGPipeline()
+    agent = HospitalAgent(rag_pipeline)
+    logger.info("✅ All systems online and ready!")
+
+# HeyGen integration is currently disabled in favor of D-ID.
 
 
 # ==================== Request/Response Models ====================
@@ -155,6 +166,8 @@ async def root():
     }
 
 
+# ==================== D-ID Stream Endpoints ====================
+
 @app.get("/did/stream/start")
 async def did_start_stream():
     """Start a D-ID streaming session and return WebRTC config for frontend."""
@@ -163,8 +176,7 @@ async def did_start_stream():
     try:
         # Create streaming session
         result = did_client.create_stream(
-            source_url=settings.DID_SOURCE_URL,
-            voice_id=settings.DID_VOICE_ID
+            source_url=settings.DID_SOURCE_URL
         )
         return {
             "status": "success",
@@ -212,7 +224,7 @@ async def did_submit_ice(data: dict):
 
 @app.post("/did/stream/close-all")
 async def did_close_all():
-    """Manually close all D-ID sessions (use when max sessions reached)."""
+    """Manually close all D-ID sessions."""
     if not did_client:
         return {"status": "error", "message": "D-ID not configured"}
     try:
@@ -314,18 +326,7 @@ async def websocket_chat(websocket: WebSocket):
     active_response_task: asyncio.Task | None = None
 
     async def _send_text_to_did(text: str):
-        """Send text to D-ID for live streaming avatar speech."""
-        if did_client is None or not did_client.stream_id:
-            return
-        try:
-            # Send text to D-ID - avatar speaks in real-time via WebRTC
-            success = did_client.send_text(text)
-            if success:
-                logger.info(f"🎙️ Sent to D-ID live stream: {text[:50]}...")
-            else:
-                logger.warning("Failed to send text to D-ID")
-        except Exception as e:
-            logger.error(f"❌ D-ID send text failed: {e}")
+        pass
 
     async def _process_and_respond(question: str, request_id: int, direct_text: bool = False):
         try:
@@ -347,13 +348,20 @@ async def websocket_chat(websocket: WebSocket):
                 "request_id": request_id
             })
 
-            # Send to D-ID stream if enabled; otherwise fallback TTS audio.
-            if did_client is not None and did_client.stream_id:
-                await _send_text_to_did(agent_text)
+            # Real-time Avatar Speech
+            if did_client:
+                # Use D-ID streaming to speak the text
+                logger.info("🎤 Sending text to D-ID avatar")
+                did_client.send_text(agent_text)
+                return # <--- FIX: Stop here so we don't fall through to local TTS
+            elif settings.HEYGEN_API_KEY:
+                # HeyGen (Frontend handles this usually, but we keep the logic clean)
+                logger.info("✨ Skipping local TTS (delegating to HeyGen frontend)")
                 return
-
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
-                tmp_out_path = tmp_out.name
+            elif tts:
+                # Fallback to local TTS if no avatar provider is available
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
+                    tmp_out_path = tmp_out.name
 
             try:
                 success = await asyncio.to_thread(tts.synthesize, agent_text, tmp_out_path)
@@ -448,9 +456,6 @@ async def websocket_chat(websocket: WebSocket):
         if active_response_task and not active_response_task.done():
             active_response_task.cancel()
         agent.reset_memory()
-        # Cleanup D-ID stream
-        if did_client and did_client.stream_id:
-            did_client.delete_stream()
     except Exception as e:
         logger.error(f"❌ WebSocket error: {e}")
 
@@ -464,7 +469,7 @@ async def websocket_chat(websocket: WebSocket):
 #   - Supports async/await (handle many requests simultaneously)
 #   - Supports WebSockets (for our video chat)
 #
-# reload=True means the server restarts automatically when you save code changes.
+# reload=False means the server restarts automatically when you save code changes.
 # (Only use in development, not production)
 #
 if __name__ == "__main__":
@@ -473,5 +478,5 @@ if __name__ == "__main__":
         "main:app",          # "filename:app_variable_name"
         host=settings.HOST,   # 0.0.0.0 = accessible from any IP
         port=settings.PORT,   # Port 8000
-        reload=True           # Auto-restart on code changes (dev only)
+        reload=False           # Auto-restart on code changes (dev only)
     )

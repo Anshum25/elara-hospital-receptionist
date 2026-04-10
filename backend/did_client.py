@@ -21,12 +21,9 @@ class DIDClient:
 
     def _headers(self) -> Dict[str, str]:
         # D-ID API key format: "email:secret" - needs base64 encoding for Basic auth
-        # If already contains colon, it's likely already in user:pass format
         if ':' in self.api_key:
-            # Encode the raw credentials (email:secret)
             encoded = base64.b64encode(self.api_key.encode()).decode()
         else:
-            # Assume already base64 encoded
             encoded = self.api_key
 
         return {
@@ -56,26 +53,15 @@ class DIDClient:
             logger.warning(f"Could not close existing sessions: {e}")
             return False
 
-    def create_stream(self, source_url: str, voice_id: str) -> Dict[str, Any]:
+    def create_stream(self, source_url: str) -> Dict[str, Any]:
         """Create a new streaming session and return WebRTC config."""
-        # First, try to close any existing sessions
         self.close_all_sessions()
-
         url = f"{self.base_url}/talks/streams"
-
-        # Simplified body for D-ID streaming API
-        body = {
-            "source_url": source_url
-        }
+        body = {"source_url": source_url}
 
         logger.info(f"Creating D-ID stream with source_url: {source_url[:50]}...")
         headers = self._headers()
-        logger.info(f"Auth header (first 50 chars): {headers['Authorization'][:50]}...")
-
         resp = httpx.post(url, headers=headers, json=body, timeout=60)
-
-        # Log response for debugging
-        logger.info(f"D-ID create_stream response status: {resp.status_code}")
 
         try:
             resp.raise_for_status()
@@ -85,22 +71,13 @@ class DIDClient:
             raise RuntimeError(f"D-ID create stream failed ({resp.status_code}): {error_text}") from e
 
         data = resp.json()
-        logger.info(f"D-ID response keys: {list(data.keys())}")
-
-        self.session_id = data.get("id")  # D-ID uses 'id' for session_id
-        self.stream_id = data.get("id")   # Same as session_id
-
-        # D-ID returns ice_servers and offer.sdp differently
+        self.stream_id = data.get("id")
+        # Handle both snake_case and camelCase from D-ID
+        self.session_id = data.get("session_id") or data.get("sessionId")
         self.ice_servers = data.get("ice_servers", [])
-        self.sdp_offer = data.get("offer", {}).get("sdp") if data.get("offer") else None
+        self.sdp_offer = data.get("offer", {}).get("sdp") if data.get("offer") else data.get("sdp")
 
-        # Alternative field names D-ID might use
-        if not self.sdp_offer and data.get("sdp"):
-            self.sdp_offer = data.get("sdp")
-
-        logger.info(f"Session: {self.session_id}, Has SDP offer: {bool(self.sdp_offer)}, ICE servers: {len(self.ice_servers)}")
-
-        logger.info(f"✅ D-ID stream created: session={self.session_id}, stream={self.stream_id}")
+        logger.info(f"✅ D-ID stream created: stream_id={self.stream_id}, session_id={self.session_id}")
         return {
             "session_id": self.session_id,
             "stream_id": self.stream_id,
@@ -114,17 +91,21 @@ class DIDClient:
             raise RuntimeError("No active stream. Call create_stream() first.")
 
         url = f"{self.base_url}/talks/streams/{self.stream_id}/sdp"
+        # D-ID expects the answer to be a JSEP object
         body = {
-            "session_id": self.session_id,
-            "answer": sdp_answer
+            "session_id": self.session_id, 
+            "answer": {
+                "type": "answer",
+                "sdp": sdp_answer
+            }
         }
 
         resp = httpx.post(url, headers=self._headers(), json=body, timeout=30)
         try:
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
-            raise RuntimeError(f"D-ID SDP submit failed ({resp.status_code}): {resp.text[:1000]}") from e
-
+            logger.error(f"❌ D-ID SDP submit failed ({resp.status_code}): {resp.text}")
+            raise
         logger.info("✅ D-ID WebRTC handshake complete")
         return True
 
@@ -144,7 +125,7 @@ class DIDClient:
         resp = httpx.post(url, headers=self._headers(), json=body, timeout=30)
         try:
             resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
+        except Exception as e:
             logger.warning(f"D-ID ICE candidate submit failed: {e}")
             return False
         return True
@@ -165,17 +146,14 @@ class DIDClient:
                 }
             },
             "session_id": self.session_id,
-            "config": {
-                "stitch": True,
-                "fluent": True
-            }
+            "config": {"stitch": True, "fluent": True}
         }
 
         resp = httpx.post(url, headers=self._headers(), json=body, timeout=30)
         try:
             resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            logger.error(f"D-ID send text failed ({resp.status_code}): {resp.text[:500]}")
+        except Exception as e:
+            logger.error(f"D-ID send text failed: {e}")
             return False
 
         logger.info(f"🎙️ Sent text to D-ID: {text[:50]}...")
@@ -185,18 +163,13 @@ class DIDClient:
         """Close and cleanup the streaming session."""
         if not self.session_id or not self.stream_id:
             return True
-
+        
         url = f"{self.base_url}/talks/streams/{self.stream_id}"
-        body = {"session_id": self.session_id}
-
         try:
-            resp = httpx.delete(url, headers=self._headers(), json=body, timeout=30)
-            resp.raise_for_status()
-            logger.info("✅ D-ID stream closed")
-        except Exception as e:
-            logger.warning(f"D-ID stream close failed (may already be closed): {e}")
-
-        self.session_id = None
-        self.stream_id = None
-        self.sdp_offer = None
-        return True
+            httpx.delete(url, headers=self._headers(), timeout=30)
+            logger.info(f"🗑️ Deleted D-ID stream session: {self.session_id}")
+            self.session_id = None
+            self.stream_id = None
+            return True
+        except Exception:
+            return False
